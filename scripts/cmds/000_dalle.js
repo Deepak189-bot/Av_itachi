@@ -47,7 +47,7 @@ module.exports = {
       });
     } catch (error) {
       console.error("Error:", error);
-      message.reply("❌ | An error occurred. Please try again later.");
+      message.reply(error.message + "\n\n❌ | An error occurred. Please try again later.");
     }
   }
 };

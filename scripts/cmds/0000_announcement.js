@@ -1,7 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const moment = require('moment-timezone');
-const https = require('https');
 
 const botAdmins = global.GoatBot.config.adminBot;
 
@@ -18,7 +16,7 @@ module.exports = {
     },
     category: 'admin',
     guide: {
-      en: '   {pn} [post|create]: To create a new announcement\n   {pn}: To display the current announcement'
+      en: '{pn} [post|create] [text]: Create a new announcement\n{pn}: Display the current announcement'
     },
   },
 
@@ -26,28 +24,27 @@ module.exports = {
     en: {
       announcementSet: 'Your announcement has been set.',
       noAnnouncement: 'There is no current announcement.',
-      currentAnnouncement: '▽ Current announcement ▽:\n───────────────────\n%1\n───────────────────\n',
-      fetchError: 'An error occurred while fetching the latest bot code.'
+      currentAnnouncement: '▽ Current Announcement ▽\n───────────────────\n%1\n───────────────────\n',
+      fetchError: 'An error occurred while fetching the announcement.',
+      noPermission: 'You do not have permission to use this command.',
+      provideText: 'Please provide the announcement text. Usage: /announcement create [text]',
+      unknownCommand: 'Unknown command. Usage: /announcement [post|create] [text]'
     }
   },
 
-  onStart: async function ({ args, message, api, event }) {
+  onStart: async function ({ args, message, event }) {
     const { senderID } = event;
-    const announcementFilePath = path.join(__dirname, '/JSON/announcement.txt');
+    const announcementFilePath = path.join(__dirname, 'announcement.txt');
 
-    
-    if (args[0] === 'post' || args[0] === 'create') {
+    if (['post', 'create'].includes(args[0])) {
       const announcementText = args.slice(1).join(' ');
 
       if (!announcementText) {
-        message.reply('Please provide the announcement text. Usage: /announcement create [text]');
-        return;
+        return message.reply(this.langs.en.provideText);
       }
 
-      // Check if the sender is a bot admin
       if (!botAdmins.includes(senderID)) {
-        message.reply('You do not have permission to use this command.');
-        return;
+        return message.reply(this.langs.en.noPermission);
       }
 
       try {
@@ -55,29 +52,28 @@ module.exports = {
         message.reply(this.langs.en.announcementSet);
       } catch (err) {
         console.error('Error writing to announcement file:', err);
-        message.reply('An error occurred while setting the announcement.');
+        message.reply(this.langs.en.fetchError);
       }
 
       return;
     }
 
-    // If no arguments, display the current announcement.
-    if (!args[0]) {
+    if (!args.length) {
       try {
-        const currentAnnouncement = fs.readFileSync(announcementFilePath, 'utf8');
-        if (currentAnnouncement.trim() !== '') {
+        const currentAnnouncement = fs.readFileSync(announcementFilePath, 'utf8').trim();
+        if (currentAnnouncement) {
           message.reply(this.langs.en.currentAnnouncement.replace('%1', currentAnnouncement));
         } else {
           message.reply(this.langs.en.noAnnouncement);
         }
       } catch (err) {
         console.error('Error reading announcement file:', err);
-        message.reply('An error occurred while fetching the announcement.');
+        message.reply(this.langs.en.fetchError);
       }
 
       return;
     }
 
-    message.reply('Unknown command. Usage: /announcement [post|create] [text]');
+    message.reply(this.langs.en.unknownCommand);
   }
 };

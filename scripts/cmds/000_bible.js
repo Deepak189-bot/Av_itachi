@@ -1,27 +1,42 @@
-const axios = require("axios");
+const axios = require('axios');
 
 module.exports = {
   config: {
-    name: "bible",
-    version: "1.0",
-    author: "Ace",
-    countDown: 10,
+    name: 'bible',
+    aliases: ['tellverse', 'verse'],
+    version: '1.0',
+    author: 'JV',
     role: 0,
-    description: "Random Bible Verse",
-    category: "𝗘𝗗𝗨𝗖𝗔𝗧𝗜𝗢𝗡"
+    category: '𝗘𝗗𝗨𝗖𝗔𝗧𝗜𝗢𝗡',
+    description: {
+      en: 'Shares a random Bible verse.'
+    },
+    guide: {
+      en: '{pn}'
+    }
   },
-  onStart: async function({ api, event, args }) {
-    const sentMessage = await message.reply(`📖 Retrieving a random Bible verse...`/*, event.threadID, (err, info) => {
-          setTimeout(() => {
-            api.unsendMessage(info.messageID);
-          }, 300);
-        }, event.messageID*/);
+  onStart: async function ({ message }) {
     try {
-      const res = await axios.get(`https://ace-bible-2dj0.onrender.com/random-verse`);
-      const verse = res.data;
-      return api.editMessage(`📜 ${verse.book_name} ${verse.chapter}:${verse.verse}\n\n${verse.text}`, sentMessage.messageID);
+      const date = new Date();
+      const day = date.getDate();
+      const response = await axios.get(`https://beta.ourmanna.com/api/v1/get/?format=text&order=random&order_by=verse&day=${day}`);
+
+      if (response.status !== 200 || !response.data) {
+        throw new Error('Invalid or missing response from OurManna API');
+      }
+
+      const msg = `Here's a Bible verse for you: \n\n${response.data}`;
+
+      const messageID = await message.reply(msg);
+
+      if (!messageID) {
+        throw new Error('Failed to send message with Bible verse');
+      }
+
+      console.log(`Sent Bible verse with message ID ${messageID}`);
     } catch (error) {
-      api.sendMessage("An error occurred while making the API request: " + error, event.threadID, event.messageID);
+      console.error(`Failed to send Bible verse: ${error.message}`);
+      message.reply('Sorry, something went wrong while trying to share a Bible passage. Please try again later.');
     }
   }
 };
