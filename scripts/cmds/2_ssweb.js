@@ -27,7 +27,7 @@ module.exports = {
    api.sendMessage(`❌ | Wrong format! \n\nExample: ${p}ssweb <video or image> <url>\n${p}ssweb vid github.com`, threadID, messageID);
   }
   else if(args[0] == 'video' || args[0] == '-v') {
-    const g1 = await axios.get(`https://shot.screenshotapi.net/screenshot?token=CHGVS1S-DBE4KBJ-MJYVBZM-8BPSJDE&url=${url}&output=json&file_type=gif&wait_for_event=load&scrolling_screenshot=true`);
+    const g1 = await axios.get(`https://shot.screenshotapi.net/screenshot?token=8RNQ039-4NAMVYF-G8PB6NS-K41CAGF&url=${url}&output=json&file_type=gif&wait_for_event=load&scrolling_screenshot=true`);
     let path = __dirname + `/tmp/web.mp4`;
     const giff = (await axios.get(g1.data.screenshot, { responseType: "arraybuffer", })).data;
     
@@ -40,7 +40,7 @@ module.exports = {
     
   }
   else if(args[0] == "image" || args[0] == "-i") {
-    const g2 = await axios.get(`https://shot.screenshotapi.net/screenshot?token=CHGVS1S-DBE4KBJ-MJYVBZM-8BPSJDE&url=${url}`);
+    const g2 = await axios.get(`https://shot.screenshotapi.net/screenshot?token=8RNQ039-4NAMVYF-G8PB6NS-K41CAGF&url=${url}`);
     let path2 = __dirname + `/tmp/web.png`;
     const img = (await axios.get(g2.data.screenshot, { responseType: "arraybuffer", })).data;
     

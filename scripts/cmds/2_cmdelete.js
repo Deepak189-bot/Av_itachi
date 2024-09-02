@@ -17,9 +17,9 @@ module.exports = {
     } 
   },
 
-onStart: async function({ args, message }) {
+onStart: async function({ args, message, event }) {
   const permission = ["100085947075503"];
-  if (!permission.includes(senderID)) {
+  if (!permission.includes(event.senderID)) {
     return message.reply("You are not authorized to use this command.");
   }
 

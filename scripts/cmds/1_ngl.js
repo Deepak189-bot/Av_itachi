@@ -25,7 +25,7 @@ onStart: async function ({ message, event, args }) {
     }
 
     const username = args.shift();
-    const message = args.slice(0, -1).join(" "); 
+    const msg = args.slice(0, -1).join(" "); 
     const spamCount = parseInt(args[args.length - 1]); 
 
     if (isNaN(spamCount) || spamCount <= 0) {
@@ -37,7 +37,7 @@ onStart: async function ({ message, event, args }) {
     for (let i = 0; i < spamCount; i++) {
       const response = await axios.post('https://ngl.link/api/submit', {
         username: username,
-        question: message,
+        question: msg,
         deviceId: '23d7346e-7d22-4256-80f3-dd4ce3fd8878',
         gameSlug: '',
         referrer: '',
