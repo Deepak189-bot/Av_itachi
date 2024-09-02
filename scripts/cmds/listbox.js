@@ -14,7 +14,7 @@ module.exports = {
       vi: "",
       en: "Listing the thread in we're the bot participated."
     },
-    category: "𝗔𝗗𝗠𝗜𝗡/𝗢𝗪𝗡𝗘𝗥/𝗕𝗢𝗫𝗖𝗛𝗔𝗧/𝗡𝗢𝗧𝗖𝗠𝗗",
+    category: "owner",
     guide: {
       en: "   {pn}"
     } 
@@ -61,7 +61,7 @@ module.exports = {
   );
 }, 
 
-  onReply: async function({ api, event, args, threadsData, Reply }) {
+  onReply: async function({ api, event, args, threadsData, Reply, message }) {
 
   if (parseInt(event.senderID) !== parseInt(Reply.author)) return;
 
