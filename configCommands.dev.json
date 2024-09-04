@@ -33,9 +33,11 @@
     "backupdata.js",
     "jsontomongodb.js",
     "jsontosqlite.js",
-    "cmd", 
-    "eval", 
-    "gpt", 
-    "0000_talk(akira)"
+    "cmd.js", 
+    "eval.js", 
+    "gpt.js", 
+    "0000_talk(akira).js",
+    "2_HiDetector.js",
+    "2_messageDetector.js"
   ] 
 }
