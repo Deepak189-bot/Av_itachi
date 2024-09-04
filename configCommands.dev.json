@@ -33,7 +33,6 @@
     "backupdata.js",
     "jsontomongodb.js",
     "jsontosqlite.js",
-    "eval.js", 
     "gpt.js", 
     "0000_talk(akira).js",
     "2_HiDetector.js",
