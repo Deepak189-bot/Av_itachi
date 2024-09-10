@@ -2,13 +2,13 @@ const axios = require('axios');
 
 module.exports = {
   config: {
-    name: 'akira',
+    name: 'itachi',
     version: '1.0.0',
-    author: 'AceGerome',
+    author: 'Itachi',
     countDown: 5,
     role: 0,
     description: {
-      en: 'Talk with Akira-AI',
+      en: 'Talk with Itachi-AI',
     },
     category: '𝗘𝗗𝗨𝗖𝗔𝗧𝗜𝗢𝗡',
     guide: {
