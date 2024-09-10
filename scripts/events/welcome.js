@@ -2,14 +2,14 @@ const { getTime, drive } = global.utils;
 if (!global.temp.welcomeEvent)
 	global.temp.welcomeEvent = {};
 const ownerInfo = {
-	name: "Ace Gerome",
-	age: "14", 
+	name: "ÎTÂÇHÎ HÊRÊ",
+	age: "15", 
 	gender: "Male", 
 	status: "Single", 
-	hobby: "Playing Chess, Etc...",
-	facebookLink: "facebook.com/ace.gerome", 
+	hobby: "Playing freefire with my sensei...",
+	facebookLink: "facebook.com/itachisenseihere?mibextid=ZbWKwL", 
 	relationship: "With My Cat!", 
-	bio: "Proud to be 🇮🇹\n⠀⠀⠀⠀⠀A Person Who Don't Exist"  
+	bio: "Proud to be 🇳🇵\n⠀⠀⠀⠀⠀A Person Who Don't Exist"  
 };
 
 module.exports = {
