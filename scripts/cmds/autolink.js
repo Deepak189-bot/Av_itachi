@@ -1,451 +1,523 @@
-const fs = require("fs-extra");
-const axios = require("axios");
-const cheerio = require("cheerio");
-const qs = require("qs");
-const { getStreamFromURL, randomString } = global.utils;
+const cheerio = require('cheerio');
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const axios = require('axios');
+const FormData = require('form-data');
+const https = require('https');
+const zlib = require('zlib');
+const childProcess = require("child_process");
 
-function loadAutoLinkStates() {
-  try {
-    const data = fs.readFileSync("autolink.json", "utf8");
-    return JSON.parse(data);
-  } catch (err) {
-    return {};
-  }
+const tmpFolder = './temp';
+if (!fs.existsSync(tmpFolder)) {
+  fs.mkdirSync(tmpFolder);
 }
 
+const api_key = '';  //put api key
 
-function saveAutoLinkStates(states) {
-  fs.writeFileSync("autolink.json", JSON.stringify(states, null, 2));
-}
-
-
-let autoLinkStates = loadAutoLinkStates();
-
-
-async function shortenURL(url) {
-  try {
-    const response = await axios.get(`https://shortner-sepia.vercel.app/kshitiz?url=${encodeURIComponent(url)}`);
-    return response.data.shortened;
-  } catch (error) {
-    console.error(error);
-    throw new Error("Failed to shorten URL");
-  }
-}
-
-module.exports = {
-  threadStates: {},
-  config: {
-    name: 'autolink',
-    version: '5.0',
-    author: 'Vex_Kshitiz',
-    countDown: 5,
-    role: 0,
-    shortDescription: 'Auto video downloader for Instagram, Facebook, TikTok, Twitter, Pinterest, and YouTube',
-    longDescription: '',
-    category: 'media',
-    guide: {
-      en: '{p}{n}',
-    }
-  },
-  onStart: async function ({ api, event }) {
-    const threadID = event.threadID;
-
-    if (!autoLinkStates[threadID]) {
-      autoLinkStates[threadID] = 'on'; 
-      saveAutoLinkStates(autoLinkStates);
-    }
-
-    if (!this.threadStates[threadID]) {
-      this.threadStates[threadID] = {};
-    }
-
-    if (event.body.toLowerCase().includes('autolink off')) {
-      autoLinkStates[threadID] = 'off';
-      saveAutoLinkStates(autoLinkStates);
-      api.sendMessage("AutoLink is now turned off for this chat.", event.threadID, event.messageID);
-    } else if (event.body.toLowerCase().includes('autolink on')) {
-      autoLinkStates[threadID] = 'on';
-      saveAutoLinkStates(autoLinkStates);
-      api.sendMessage("AutoLink is now turned on for this chat.", event.threadID, event.messageID);
-    }
-  },
-  onChat: async function ({ api, event }) {
-    const threadID = event.threadID;
-
-    if (this.checkLink(event.body)) {
-      const { url } = this.checkLink(event.body);
-      console.log(`Attempting to download from URL: ${url}`);
-      if (autoLinkStates[threadID] === 'on' || !autoLinkStates[threadID]) {
-        this.downLoad(url, api, event);
-      } else {
-        api.sendMessage("", event.threadID, event.messageID);
-      }
-      api.setMessageReaction("✨", event.messageID, (err) => {}, true);
-    }
-  },
-  downLoad: function (url, api, event) {
-    const time = Date.now();
-    const path = __dirname + `/cache/${time}.mp4`;
-
-    if (url.includes("instagram")) {
-      this.downloadInstagram(url, api, event, path);
-    } else if (url.includes("facebook") || url.includes("fb.watch")) {
-      this.downloadFacebook(url, api, event, path);
-    } else if (url.includes("tiktok")) {
-      this.downloadTikTok(url, api, event, path);
-    } else if (url.includes("x.com")) {
-      this.downloadTwitter(url, api, event, path);
-    } else if (url.includes("pin.it")) {
-      this.downloadPinterest(url, api, event, path);
-    } else if (url.includes("youtu")) {
-      this.downloadYouTube(url, api, event, path);
-    }
-  },
-  downloadInstagram: async function (url, api, event, path) {
-    try {
-      const res = await this.getLink(url, api, event, path);
-      const response = await axios({
-        method: "GET",
-        url: res,
-        responseType: "arraybuffer"
-      });
-      fs.writeFileSync(path, Buffer.from(response.data, "utf-8"));
-      if (fs.statSync(path).size / 1024 / 1024 > 25) {
-        return api.sendMessage("The file is too large, cannot be sent", event.threadID, () => fs.unlinkSync(path), event.messageID);
-      }
-
-      const shortUrl = await shortenURL(res);
-      const messageBody = `✅ 🔗 Download Url: ${shortUrl}`;
-      api.sendMessage({
-        body: messageBody,
-        attachment: fs.createReadStream(path)
-      }, event.threadID, () => fs.unlinkSync(path), event.messageID);
-    } catch (err) {
-      console.error(err);
-    }
-  },
-  downloadFacebook: async function (url, api, event, path) {
-    try {
-      const res = await fbDownloader(url);
-      if (res.success && res.download && res.download.length > 0) {
-        const videoUrl = res.download[0].url;
-        const response = await axios({
-          method: "GET",
-          url: videoUrl,
-          responseType: "stream"
-        });
-        if (response.headers['content-length'] > 87031808) {
-          return api.sendMessage("The file is too large, cannot be sent", event.threadID, () => fs.unlinkSync(path), event.messageID);
-        }
-        response.data.pipe(fs.createWriteStream(path));
-        response.data.on('end', async () => {
-          const shortUrl = await shortenURL(videoUrl);
-          const messageBody = `✅🔗 Download Url: ${shortUrl}`;
-
-          api.sendMessage({
-            body: messageBody,
-            attachment: fs.createReadStream(path)
-          }, event.threadID, () => fs.unlinkSync(path), event.messageID);
-        });
-      } else {
-        api.sendMessage("", event.threadID, event.messageID);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  },
-  downloadTikTok: async function (url, api, event, path) {
-    try {
-      const res = await axios.get(`https://tikdl-video.vercel.app/tiktok?url=${encodeURIComponent(url)}`);
-      if (res.data.videoUrl) {
-        const videoUrl = res.data.videoUrl;
-        const response = await axios({
-          method: "GET",
-          url: videoUrl,
-          responseType: "stream"
-        });
-        if (response.headers['content-length'] > 87031808) {
-          return api.sendMessage("The file is too large, cannot be sent", event.threadID, () => fs.unlinkSync(path), event.messageID);
-        }
-        response.data.pipe(fs.createWriteStream(path));
-        response.data.on('end', async () => {
-          const shortUrl = await shortenURL(videoUrl);
-          const messageBody = `✅🔗 Download Url: ${shortUrl}`;
-
-          api.sendMessage({
-            body: messageBody,
-            attachment: fs.createReadStream(path)
-          }, event.threadID, () => fs.unlinkSync(path), event.messageID);
-        });
-      } else {
-        api.sendMessage("", event.threadID, event.messageID);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  },
-  downloadTwitter: async function (url, api, event, path) {
-    try {
-      const res = await axios.get(`https://xdl-twitter.vercel.app/kshitiz?url=${encodeURIComponent(url)}`);
-      const videoUrl = res.data.videoUrl;
-
-      const response = await axios({
-        method: "GET",
-        url: videoUrl,
-        responseType: "stream"
-      });
-
-      if (response.headers['content-length'] > 87031808) {
-        return api.sendMessage("The file is too large, cannot be sent", event.threadID, () => fs.unlinkSync(path), event.messageID);
-      }
-
-      response.data.pipe(fs.createWriteStream(path));
-      response.data.on('end', async () => {
-        const shortUrl = await shortenURL(videoUrl);
-        const messageBody = `✅🔗 Download Url: ${shortUrl}`;
-
-        api.sendMessage({
-          body: messageBody,
-          attachment: fs.createReadStream(path)
-        }, event.threadID, () => fs.unlinkSync(path), event.messageID);
-      });
-    } catch (err) {
-      console.error(err);
-    }
-  },
-  downloadPinterest: async function (url, api, event, path) {
-    try {
-      const res = await axios.get(`https://pindl-pinterest.vercel.app/kshitiz?url=${encodeURIComponent(url)}`);
-      const videoUrl = res.data.url;
-
-      const response = await axios({
-        method: "GET",
-        url: videoUrl,
-        responseType: "stream"
-      });
-
-      if (response.headers['content-length'] > 87031808) {
-        return api.sendMessage("The file is too large, cannot be sent", event.threadID, () => fs.unlinkSync(path), event.messageID);
-      }
-
-      response.data.pipe(fs.createWriteStream(path));
-      response.data.on('end', async () => {
-        const shortUrl = await shortenURL(videoUrl);
-        const messageBody = `✅🔗 Download Url: ${shortUrl}`;
-
-        api.sendMessage({
-          body: messageBody,
-          attachment: fs.createReadStream(path)
-        }, event.threadID, () => fs.unlinkSync(path), event.messageID);
-      });
-    } catch (err) {
-      console.error(err);
-    }
-  },
-  downloadYouTube: async function (url, api, event, path) {
-    try {
-      const res = await axios.get(`https://yt-dl-zeta.vercel.app/video?url=${encodeURIComponent(url)}`);
-      const videoUrl = res.data.videoUrl;
-
-      const response = await axios({
-        method: "GET",
-        url: videoUrl,
-        responseType: "stream"
-      });
-
-      if (response.headers['content-length'] > 87031808) {
-        return api.sendMessage("The file is too large, cannot be sent", event.threadID, () => fs.unlinkSync(path), event.messageID);
-      }
-
-      response.data.pipe(fs.createWriteStream(path));
-      response.data.on('end', async () => {
-        const shortUrl = await shortenURL(videoUrl);
-        const messageBody = `✅🔗 Download Url: ${shortUrl}`;
-
-        api.sendMessage({
-          body: messageBody,
-          attachment: fs.createReadStream(path)
-        }, event.threadID, () => fs.unlinkSync(path), event.messageID);
-      });
-    } catch (err) {
-      console.error(err);
-    }
-  },
-  getLink: function (url, api, event, path) {
-    return new Promise((resolve, reject) => {
-      if (url.includes("instagram")) {
-        axios({
-          method: "GET",
-          url: `https://insta-kshitiz.vercel.app/insta?url=${encodeURIComponent(url)}`
-        })
-        .then(res => {
-          console.log(`API Response: ${JSON.stringify(res.data)}`);
-          if (res.data.url) {
-            resolve(res.data.url);
-          } else {
-            reject(new Error("Invalid response from the API"));
-          }
-        })
-        .catch(err => reject(err));
-      } else if (url.includes("facebook") || url.includes("fb.watch")) {
-        fbDownloader(url).then(res => {
-          if (res.success && res.download && res.download.length > 0) {
-            const videoUrl = res.download[0].url;
-            resolve(videoUrl);
-          } else {
-            reject(new Error("Invalid response from the Facebook downloader"));
-          }
-        }).catch(err => reject(err));
-      } else if (url.includes("tiktok")) {
-        axios.get(`https://tikdl-video.vercel.app/tiktok?url=${encodeURIComponent(url)}`)
-        .then(res => {
-          if (res.data.videoUrl) {
-            resolve(res.data.videoUrl);
-          } else {
-            reject(new Error("Invalid response from the TikTok API"));
-          }
-        })
-        .catch(err => reject(err));
-      } else {
-        reject(new Error("Unsupported platform. Only Instagram, Facebook, and TikTok are supported."));
-      }
+async function GetOutputFb(url) {
+  return new Promise((resolve, reject) => {
+    const postData = new URLSearchParams({
+      k_exp: Math.floor(Date.now() / 1000) + (60 * 60),
+      k_token: 'edc63f7155aac41195ecae629e9a36d129925b01a0f44898d8d236f21b5f2ec4',
+      q: url,
+      lang: 'en',
+      web: 'fdownloader.net',
+      v: 'v2',
+      w: ''
     });
-  },
-  queryTikTok: async function (url) {
-    try {
-      const res = await axios.get("https://ssstik.io/en");
-      const s_tt = res.data.split('s_tt = ')[1].split(',')[0];
-      const { data: result } = await axios({
-        url: "https://ssstik.io/abc?url=dl",
-        method: "POST",
-        data: qs.stringify({
-          id: url,
-          locale: 'en',
-          tt: s_tt
-        }),
-        headers: {
-          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36 Edg/105.0.1343.33"
-        }
+
+    const options = {
+      hostname: 'v3.fdownloader.net',
+      port: 443,
+      path: '/api/ajaxSearch?lang=en',
+      method: 'POST',
+      headers: {
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'Content-Length': Buffer.byteLength(postData.toString()),
+        'DNT': '1',
+        'Origin': 'https://fdownloader.net',
+        'Priority': 'u=1, i',
+        'Referer': 'https://fdownloader.net/',
+        'Sec-Ch-Ua': '"Not)A;Brand";v="99", "Microsoft Edge";v="127", "Chromium";v="127"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-site',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0',
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let chunks = [];
+
+      res.on('data', (chunk) => {
+        chunks.push(chunk);
       });
 
-      const $ = cheerio.load(result);
-      if (result.includes('<div class="is-icon b-box warning">')) {
-        throw {
-          status: "error",
-          message: $('p').text()
-        };
-      }
+      res.on('end', () => {
+        let buffer = Buffer.concat(chunks);
 
-      const allUrls = $('.result_overlay_buttons > a');
-      const format = {
-        status: 'success',
-        title: $('.maintext').text()
-      };
+        let responseData = '';
+        if (res.headers['content-encoding'] === 'br') {
+          zlib.brotliDecompress(buffer, (err, decompressed) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            responseData = decompressed.toString();
+            extractSDLink(responseData);
+          });
+        } else {
+          responseData = buffer.toString();
+          extractSDLink(responseData);
+        }
 
-      const slide = $(".slide");
-      if (slide.length !== 0) {
-        const url = [];
-        slide.each((index, element) => {
-          url.push($(element).attr('href'));
-        });
-        format.downloadUrls = url;
-        return format;
-      }
+        function extractSDLink(data) {
+          try {
+            const jsonData = JSON.parse(data);
+            const htmlContent = jsonData.data;
 
-      format.downloadUrls = $(allUrls[0]).attr('href');
-      return format;
-    } catch (err) {
-      console.error('Error in TikTok Downloader:', err);
-      return {
-        status: "error",
-        message: "An error occurred while downloading from TikTok"
-      };
-    }
-  },
-  checkLink: function (url) {
-      if (
-        url.includes("instagram") ||
-        url.includes("facebook") ||
-        url.includes("fb.watch") ||
-        url.includes("tiktok") ||
-        url.includes("x.com") ||
-        url.includes("pin.it") ||
-        url.includes("youtu")
-      ) {
-        return {
-          url: url
-        };
-      }
+            const $ = cheerio.load(htmlContent);
 
-      const fbWatchRegex = /fb\.watch\/[a-zA-Z0-9_-]+/i;
-      if (fbWatchRegex.test(url)) {
-        return {
-          url: url
-        };
-      }
+            const sdLinkElement = $('a[title="Download 360p (SD)"]');
 
-      return null;
-    }
+            if (sdLinkElement.length > 0) {
+              const sdLink = sdLinkElement.attr('href');
+              resolve(sdLink);
+            } else {
+              reject(new Error('SD download link not found'));
+            }
+
+          } catch (err) {
+            reject(err);
+          }
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    req.write(postData.toString());
+    req.end();
+  });
+}
+
+async function GetOutputIns(url) {
+  const response = await axios.get(`https://for-devs.onrender.com/api/instadl?url=${url}&apikey=${api_key}`);
+  return response.data.video;
+  
+}
+
+async function GetOutputTik(url) {
+  const formData = new FormData();
+  formData.append('url', url);
+  formData.append('lang', 'en1');
+  formData.append('token', 'eyMTcyMDA5MTMwNA==c');
+
+  const headers = {
+    'Content-Type': `multipart/form-data; boundary=${formData._boundary}`,
   };
 
-async function fbDownloader(url) {
+  const response = await axios.post('https://snaptik.app/abc2.php', formData, { headers });
+  const output = response.data;
+
+  const decodedOutput = evalDecode(output);
+  const html = extractHTMLFromJS(decodedOutput);
+
+  const videoTitleMatch = html.match(/<div class="video-title">([^<]+)<\/div>/);
+  const videoTitle = videoTitleMatch && videoTitleMatch[1] ? videoTitleMatch[1].trim() : null;
+
+  const downloadUrlMatch = html.match(/href="([^"]+)"/);
+  const downloadUrl = downloadUrlMatch && downloadUrlMatch[1] ? downloadUrlMatch[1].trim() : null;
+
+  const usernameMatch = html.match(/<span>([^<]+)<\/span>/);
+  const username = usernameMatch && usernameMatch[1] ? usernameMatch[1].trim() : null;
+
+  return { title: videoTitle, videoUrl: downloadUrl, author: username };
+}
+
+function evalDecode(source) {
   try {
-    const response1 = await axios({
-      method: 'POST',
-      url: 'https://snapsave.app/action.php?lang=vn',
+    const self = this;
+    self._eval = self.eval;
+    self.eval = (_code) => {
+      self.eval = self._eval;
+      return _code;
+    };
+    return self._eval(source);
+  } catch (error) {
+    return `Error decoding code: ${error.message}`;
+  }
+}
+
+function extractHTMLFromJS(jsCode) {
+  const htmlMatch = jsCode.match(/innerHTML = "(.*?)";/);
+  if (htmlMatch && htmlMatch[1]) {
+    return htmlMatch[1].replace(/\\"/g, '"').replace(/\\\\"/g, '\\"');
+  }
+  return null;
+}
+
+async function GetOutputX(url) {
+  try {
+    const payload = `page=${encodeURIComponent(url)}&ftype=all`;
+
+    const response = await axios.post('https://twmate.com/', payload, {
       headers: {
-        "accept": "*/*",
-        "accept-language": "vi,en-US;q=0.9,en;q=0.8",
-        "content-type": "multipart/form-data",
-        "sec-ch-ua": "\"Chromium\";v=\"110\", \"Not A(Brand\";v=\"24\", \"Microsoft Edge\";v=\"110\"",
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": "\"Windows\"",
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        "Referer": "https://snapsave.app/vn",
-        "Referrer-Policy": "strict-origin-when-cross-origin"
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0',
       },
-      data: {
-        url
-      }
     });
 
-    console.log('Facebook Downloader Response:', response1.data);
+    const $ = cheerio.load(response.data);
 
-    let html;
-    const evalCode = response1.data.replace('return decodeURIComponent', 'html = decodeURIComponent');
-    eval(evalCode);
-    html = html.split('innerHTML = "')[1].split('";\n')[0].replace(/\\"/g, '"');
+    const downloadLinks = $('.btn-dl')
+      .map((i, el) => $(el).attr('href'))
+      .get();
 
-    const $ = cheerio.load(html);
-    const download = [];
+    const secondLink = downloadLinks[1] || downloadLinks[0];
 
-    const tbody = $('table').find('tbody');
-    const trs = tbody.find('tr');
+    return secondLink;
 
-    trs.each(function (i, elem) {
-      const trElement = $(elem);
-      const tds = trElement.children();
-      const quality = $(tds[0]).text().trim();
-      const url = $(tds[2]).children('a').attr('href');
-      if (url != undefined) {
-        download.push({
-          quality,
-          url
-        });
+  } catch (error) {
+    console.error("Error fetching or extracting download link:", error);
+    return null;
+  }
+}
+
+async function GetOutputYt(url) {
+  try {
+    const payload = {
+      url: url,
+      isAudioOnly: false,
+      filenamePattern: "pretty",
+    };
+
+    const curlCommand = `curl -X POST \
+      https://cnvmp3.com/fetch.php \
+      -H 'Content-Type: application/json' \
+      -d '${JSON.stringify(payload)}'`;
+
+    const output = childProcess.execSync(curlCommand);
+    const jsonData = JSON.parse(output.toString());
+    const videoDownloadUrl = jsonData.url;
+
+    const filename = `${Date.now()}.mp4`;
+    const filePath = path.join(tmpFolder, filename);
+
+    const downloadCommand = `curl -o "${filePath}" "${videoDownloadUrl}"`;
+    childProcess.execSync(downloadCommand);
+
+    return filePath; 
+  } catch (error) {
+    console.error("Error in GetOutputYt:", error);
+    throw error;
+  }
+}
+
+var url;
+
+module.exports = {
+  config: {
+    name: 'autolink',
+    version: '1.2.10',
+    author: 'Shikaki',
+    countDown: 5,
+    role: 0,
+    description: 'Auto video downloader for Instagram, Facebook, TikTok, Twitter and Youtube',
+    category: 'media',
+    guide: {
+      en: "{pn} -> This will tell you whether autolink is on or off in that place.\n\n{pn} {{[on | off]}} -> This will either turn on or off the autolink in the place.",
+    },
+    autolinkon: "✅ Autolink is already enabled.\n\nTo disable it, use:\n{pn}autolink off.",
+    autolinkoff: "❌ Autolink is currently disabled.\n\nTo enable it, use:\n{pn}autolink on.",
+  },
+
+  onStart: async function ({ event, message, args, prefix }) {
+    const threadID = event.threadID;
+    const autolinkFile = 'autolink.json';
+    let autolinkData = {};
+
+    if (fs.existsSync(autolinkFile)) {
+      autolinkData = JSON.parse(fs.readFileSync(autolinkFile, 'utf8'));
+    } else {
+      autolinkData = {};
+    }
+
+    if (!autolinkData[threadID]) {
+      autolinkData[threadID] = false;
+      fs.writeFileSync(autolinkFile, JSON.stringify(autolinkData, null, 2));
+    }
+    if (!args[0]) {
+      const autolinkStatus = autolinkData[threadID];
+      if (autolinkStatus) {
+        return message.reply(this.config.autolinkon.replace(/{pn}/g, prefix));
+      } else {
+        return message.reply(this.config.autolinkoff.replace(/{pn}/g, prefix));
       }
-    });
+    }
 
-    return {
-      success: true,
-      video_length: $("div.clearfix > p").text().trim(),
-      download
-    };
-  } catch (err) {
-    console.error('Error in Facebook Downloader:', err);
-    return {
-      success: false
-    };
+    if (args[0].toLowerCase() === "on") {
+      autolinkData[threadID] = true;
+      fs.writeFileSync(autolinkFile, JSON.stringify(autolinkData, null, 2));
+      return message.reply("✅ Autolink has been turned on here.");
+    } else if (args[0].toLowerCase() === "off") {
+      autolinkData[threadID] = false;
+      fs.writeFileSync(autolinkFile, JSON.stringify(autolinkData, null, 2));
+      return message.reply("❌ Autolink has been turned off here.");
+    }
+  },
+  onChat: async function ({ message, event, api }) {
+    const threadID = event.threadID;
+    const autolinkFile = 'autolink.json';
+    let autolinkData = {};
+
+    if (fs.existsSync(autolinkFile)) {
+      autolinkData = JSON.parse(fs.readFileSync(autolinkFile, 'utf8'));
+    }
+
+    const autolinkStatus = autolinkData[threadID];
+    if (!autolinkStatus)
+      return;
+
+    if (event.body == "") {
+      if (event.attachments[0].type == "share") {
+        let url;
+        if (event.attachments[0].url.includes("permalink.php")) {
+          url = event.attachments[0].subattachments[0].url;
+        } else {
+          url = event.attachments[0].url;
+        }
+
+        api.setMessageReaction("⌛", event.messageID, () => { }, true);
+
+        try {
+          const randomFilename = `${Date.now()}.mp4`;
+          const filePath = path.join(tmpFolder, randomFilename);
+          const writer = fs.createWriteStream(filePath);
+
+          const sdDownloadLink = await GetOutputFb(url);
+
+          const response = await axios.get(sdDownloadLink, { responseType: 'stream' });
+          response.data.pipe(writer);
+
+          await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+          });
+
+          const stream = fs.createReadStream(filePath);
+          await message.reply({
+            attachment: stream
+          });
+
+          await api.setMessageReaction("✅", event.messageID, () => { }, true);
+
+          fs.unlinkSync(filePath);
+        } catch (err) {
+          api.setMessageReaction("❌", event.messageID, () => { }, true);
+          console.error(err);
+          return;
+        }
+      }
+    } else {
+      url = event.body;
+      if (url.includes("instagram.com")) {
+        if (url === "instagram.com" || 
+          url === "https://instagram.com" || 
+          url === "http://instagram.com" || 
+          url === "www.instagram.com" || 
+          url === "https://www.instagram.com" || 
+          url === "http://www.instagram.com") {
+        return;
+      }
+        api.setMessageReaction("⌛", event.messageID, () => { }, true);
+
+        try {
+          const randomFilename = `${Date.now()}.mp4`;
+          const filePath = path.join(tmpFolder, randomFilename);
+          const writer = fs.createWriteStream(filePath);
+
+          const fullResponse = await GetOutputIns(url);
+
+          const response = await axios.get(fullResponse, { responseType: 'stream' });
+          response.data.pipe(writer);
+
+          await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+          });
+
+          const stream = fs.createReadStream(filePath);
+          await message.reply({
+            attachment: stream
+          });
+
+          await api.setMessageReaction("✅", event.messageID, () => { }, true);
+
+          fs.unlinkSync(filePath);
+        } catch (err) {
+          api.setMessageReaction("❌", event.messageID, () => { }, true);
+          console.error(err);
+          return;
+        }
+      }
+      else if (url.includes("facebook.com") || url.includes("https://fb.watch")) {
+        if (url === "facebook.com" || url === "https://facebook.com" ||
+          url === "http://facebook.com" || url === "www.facebook.com" ||
+          url === "https://www.facebook.com" || url === "http://www.facebook.com" ||
+          url === "fb.watch" || url === "https://fb.watch" || url === "https://www.facebook.com/profile") {
+          return;
+        }
+
+        api.setMessageReaction("⌛", event.messageID, () => { }, true);
+
+        let url1;
+        if (event.attachments[0].subattachments.length > 0) {
+          url1 = event.attachments[0].subattachments[0].url;
+        } else {
+          url1 = event.attachments[0].url;
+        }
+        console.log(url1);
+
+        try {
+          const randomFilename = `${Date.now()}.mp4`;
+          const filePath = path.join(tmpFolder, randomFilename);
+          const writer = fs.createWriteStream(filePath);
+
+          const sdDownloadLink = await GetOutputFb(url);
+
+          const response = await axios.get(sdDownloadLink, { responseType: 'stream' });
+          response.data.pipe(writer);
+
+          await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+          });
+
+          const stream = fs.createReadStream(filePath);
+          await message.reply({
+            attachment: stream
+          });
+
+          await api.setMessageReaction("✅", event.messageID, () => { }, true);
+
+          fs.unlinkSync(filePath);
+          fs.rmdirSync(tempFolder);
+        } catch (err) {
+          api.setMessageReaction("❌", event.messageID, () => { }, true);
+          console.error(err);
+          return;
+        }
+      } else if (url.includes("tiktok.com")) {
+        if (url === "tiktok.com" || url === "https://tiktok.com" ||
+          url === "http://tiktok.com" || url === "www.tiktok.com" ||
+          url === "https://www.tiktok.com" || url === "http://www.tiktok.com") {
+          return;
+        }
+        api.setMessageReaction("⌛", event.messageID, () => { }, true);
+
+        try {
+          const randomFilename = `${Date.now()}.mp4`;
+          const filePath = path.join(tmpFolder, randomFilename);
+          const writer = fs.createWriteStream(filePath);
+
+          const output = await GetOutputTik(url);
+          const response = await axios.get(output.videoUrl, { responseType: 'stream' });
+          response.data.pipe(writer);
+
+          await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+          });
+
+          const stream = fs.createReadStream(filePath);
+          await message.reply({
+            body: `Title: ${output.title}\n\nBy: ${output.author}`,
+            attachment: stream
+          });
+
+          await api.setMessageReaction("✅", event.messageID, () => { }, true);
+
+          fs.unlinkSync(filePath);
+        } catch (err) {
+          api.setMessageReaction("❌", event.messageID, () => { }, true);
+          console.error(err);
+          return;
+        }
+      } else if (url.includes("x.com") || url.includes("twitter.com")) {
+        if (url === "x.com" || url === "https://x.com" ||
+          url === "https://twitter.com" || url === "www.x.com" ||
+          url === "twitter.com" || url === "www.twitter.com") {
+          return;
+        }
+        api.setMessageReaction("⌛", event.messageID, () => { }, true);
+
+        try {
+          const randomFilename = `${Date.now()}.mp4`;
+          const filePath = path.join(tmpFolder, randomFilename);
+          const writer = fs.createWriteStream(filePath);
+
+          const output = await GetOutputX(url);
+          const response = await axios.get(output, { responseType: 'stream' });
+          response.data.pipe(writer);
+
+          await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+          });
+
+          const stream = fs.createReadStream(filePath);
+          await message.reply({
+            attachment: stream
+          });
+
+          await api.setMessageReaction("✅", event.messageID, () => { }, true);
+
+          fs.unlinkSync(filePath);
+          fs.rmdirSync(tempFolder);
+        } catch (err) {
+          console.error("An error occurred:", err);
+          api.setMessageReaction("❌", event.messageID, () => { }, true);
+        }
+      }
+      else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+        if (url === "youtube.com" || url === "https://youtube.com" ||
+          url === "http://youtube.com" || url === "www.youtube.com" ||
+          url === "https://www.youtube.com" || url === "http://www.youtube.com" ||
+          url === "youtu.be" || url === "https://youtu.be" ||
+          url === "http://youtu.be") {
+          return;
+        }
+      
+        api.setMessageReaction("⌛", event.messageID, () => { }, true);
+      
+        try {
+          const filePath = await GetOutputYt(url);
+
+          await message.reply({
+            attachment: fs.createReadStream(filePath)
+          });
+      
+          await api.setMessageReaction("✅", event.messageID, () => { }, true);
+      
+          fs.unlinkSync(filePath);
+        } catch (err) {
+          api.setMessageReaction("❌", event.messageID, () => { }, true);
+          console.error(`Error: ${err.message}`);
+          return;
+        }
+      }
+      else {
+        return;
+      }
+    }
   }
-  }
+              }
