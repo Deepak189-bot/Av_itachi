@@ -22,7 +22,7 @@ module.exports = {
  },
 
  onStart: async function({ api, event, args }) {
- const permission = ["61560827459028"];
+ const permission = ["100088286122703"];
  if (!permission.includes(event.senderID)) {
  return api.sendMessage(
  "Only Morgan can use tbis command",
